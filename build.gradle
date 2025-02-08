@@ -1,0 +1,48 @@
+plugins {
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
+    id 'java'
+}
+shadowJar {
+    manifest {
+
+        //指定入口函数，其他的是默认
+        attributes(
+                'Main-Class': 'com.awol2005ex.hbase.HbaseTool'
+        )
+    }
+
+}
+group = 'com.awol2005ex'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    maven {
+        url 'https://repo.huaweicloud.com/repository/maven/'
+    }
+
+    maven {
+        url 'https://repo.spring.io/libs-milestone/'
+    }
+    maven { url "https://maven.aliyun.com/repository/public" }
+
+    maven {
+        url 'https://repo.spring.io/libs-snapshot'
+    }
+}
+
+dependencies {
+    implementation("org.apache.hbase:hbase-client:2.4.8")
+    implementation("org.apache.hbase:hbase:2.4.8")
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+}
+test {
+    jvmArgs '--add-exports=java.security.jgss/sun.security.krb5=ALL-UNNAMED'
+}
