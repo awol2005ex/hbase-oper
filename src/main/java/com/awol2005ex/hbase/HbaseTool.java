@@ -279,6 +279,10 @@ public class HbaseTool {
     public void createNamespace(Map<String, String> conf, Map<String, String> env, String namespaceName) throws Exception {
         Connection conn = getConnection(conf, env);
         Admin admin = conn.getAdmin();
+        long c =Arrays.stream(admin.listNamespaceDescriptors()).filter(ns -> ns.getName().equals(namespaceName)).count();
+        if(c>0){
+            throw new RuntimeException("Namespace already exists");
+        }
         NamespaceDescriptor descriptor = NamespaceDescriptor.create(namespaceName).build();
         admin.createNamespace(descriptor);
         admin.close();
