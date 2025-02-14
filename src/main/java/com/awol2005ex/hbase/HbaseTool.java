@@ -1,5 +1,7 @@
 package com.awol2005ex.hbase;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.HBaseConfiguration;
@@ -9,10 +11,12 @@ import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.filter.FilterList;
 import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
 import org.apache.hadoop.hbase.filter.PageFilter;
+import org.apache.hadoop.hbase.regionserver.BloomType;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.security.UserGroupInformation;
 
 import java.io.File;
+import java.lang.reflect.Type;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -129,19 +133,19 @@ public class HbaseTool {
 
         Connection conn = getConnection(conf, env);
 
-        Table table =conn.getTable(TableName.valueOf(tablename));
-        List<String> fields= Arrays.stream(table.getDescriptor().getColumnFamilies()).map(ColumnFamilyDescriptor::getNameAsString).toList();
+        Table table = conn.getTable(TableName.valueOf(tablename));
+        List<String> fields = Arrays.stream(table.getDescriptor().getColumnFamilies()).map(ColumnFamilyDescriptor::getNameAsString).toList();
         table.close();
         conn.close();
 
         return fields;
     }
 
-    public List<Map<String,String>> getTableDataList(Map<String, String> conf, Map<String, String> env, String tablename, int pageNum ,int pageSize) throws Exception {
+    public List<Map<String, String>> getTableDataList(Map<String, String> conf, Map<String, String> env, String tablename, int pageNum, int pageSize) throws Exception {
         List<Map<String, String>> list = new ArrayList<>();
         Connection conn = getConnection(conf, env);
 
-        Table table =conn.getTable(TableName.valueOf(tablename));
+        Table table = conn.getTable(TableName.valueOf(tablename));
         Scan scan = new Scan();
 
         // 组装 Filter 列表
@@ -205,7 +209,7 @@ public class HbaseTool {
 
     public Integer getTableDataCount(Map<String, String> conf, Map<String, String> env, String tablename) throws Exception {
         Connection conn = getConnection(conf, env);
-        Table table =conn.getTable(TableName.valueOf(tablename));
+        Table table = conn.getTable(TableName.valueOf(tablename));
         Scan scan = new Scan();
         scan.setFilter(new FirstKeyOnlyFilter());
         ResultScanner resultScanner = table.getScanner(scan);
@@ -214,5 +218,70 @@ public class HbaseTool {
         table.close();
         conn.close();
         return rowCount;
+    }
+
+    public void createTable(Map<String, String> conf, Map<String, String> env, String settings) throws Exception {
+        Connection conn = getConnection(conf, env);
+
+        Admin admin = conn.getAdmin();
+
+
+        Gson gson = new Gson();
+        Type type = new TypeToken<Map<String, Object>>() {
+        }.getType();
+        Map<String, Object> settinsMap = gson.fromJson(settings, type);
+        TableName tableName = TableName.valueOf((String) settinsMap.get("tableName"));
+
+        if (admin.tableExists(tableName)) {
+            throw new RuntimeException("Table already exists");
+        }
+
+
+        TableDescriptorBuilder tableDescBuilder = TableDescriptorBuilder.newBuilder(tableName);
+        List<Map<String, Object>> columnFamilies = (List<Map<String, Object>>) settinsMap.get("columnFamilies");
+        if (columnFamilies != null && !columnFamilies.isEmpty()) {
+
+            for (Map<String, Object> columnFamily : columnFamilies) {
+                ColumnFamilyDescriptorBuilder familyBuilder = ColumnFamilyDescriptorBuilder.newBuilder(Bytes.toBytes((String) columnFamily.get("name")));
+
+                for (Map.Entry<String, Object> entry : columnFamily.entrySet()) {
+                    if (entry.getKey().equals("name")) {
+                        continue;
+                    }
+                    switch (entry.getKey()) {
+                        case "maxVersions":
+                            familyBuilder.setMaxVersions(Double.valueOf(entry.getValue().toString()).intValue());
+                            break;
+                        case "timeToLive":
+                            familyBuilder.setTimeToLive(Double.valueOf(entry.getValue().toString()).intValue());
+                            break;
+                        case "blockSize":
+                            familyBuilder.setBlocksize(Double.valueOf(entry.getValue().toString()).intValue());
+                            break;
+                        case "bloomFilterType":
+                            familyBuilder.setBloomFilterType(BloomType.valueOf((String) entry.getValue()));
+                            break;
+
+                    }
+                }
+                tableDescBuilder.setColumnFamily(familyBuilder.build());
+            }
+        }
+        TableDescriptor tableDesc = tableDescBuilder.build();
+        admin.createTable(tableDesc);
+
+
+        admin.close();
+        conn.close();
+    }
+
+
+    public void createNamespace(Map<String, String> conf, Map<String, String> env, String namespaceName) throws Exception {
+        Connection conn = getConnection(conf, env);
+        Admin admin = conn.getAdmin();
+        NamespaceDescriptor descriptor = NamespaceDescriptor.create(namespaceName).build();
+        admin.createNamespace(descriptor);
+        admin.close();
+        conn.close();
     }
 }
