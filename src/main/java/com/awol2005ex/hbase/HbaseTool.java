@@ -1,12 +1,10 @@
 package com.awol2005ex.hbase;
 
+import com.awol2005ex.hbase.entity.HbaseTableStatus;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.Cell;
-import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.NamespaceDescriptor;
-import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.filter.FilterList;
 import org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter;
@@ -117,17 +115,22 @@ public class HbaseTool {
     }
 
 
-    public List<String> getTables(Map<String, String> conf, Map<String, String> env, String namespace) throws Exception {
+    public List<HbaseTableStatus> getTables(Map<String, String> conf, Map<String, String> env, String namespace) throws Exception {
 
         Connection conn = getConnection(conf, env);
         Admin admin = conn.getAdmin();
 
-        List<String> tables = Arrays.stream(admin.listTableNamesByNamespace(namespace)).map(TableName::getNameAsString).toList();
+        List<HbaseTableStatus> tables = new ArrayList<>();
+        for (HTableDescriptor tableName : admin.listTableDescriptorsByNamespace(namespace)) {
+            HbaseTableStatus hbaseTableStatus = new HbaseTableStatus().setName(tableName.getNameAsString()).setNamespace(namespace).setEnabled(admin.isTableEnabled(tableName.getTableName()));
+            tables.add(hbaseTableStatus);
+        }
         admin.close();
         conn.close();
 
         return tables;
     }
+
 
     public List<String> getTableColumnFamilies(Map<String, String> conf, Map<String, String> env, String tablename) throws Exception {
 
@@ -276,11 +279,12 @@ public class HbaseTool {
     }
 
 
+    //创建表空间
     public void createNamespace(Map<String, String> conf, Map<String, String> env, String namespace) throws Exception {
         Connection conn = getConnection(conf, env);
         Admin admin = conn.getAdmin();
-        long c =Arrays.stream(admin.listNamespaceDescriptors()).filter(ns -> ns.getName().equals(namespace)).count();
-        if(c>0){
+        long c = Arrays.stream(admin.listNamespaceDescriptors()).filter(ns -> ns.getName().equals(namespace)).count();
+        if (c > 0) {
             throw new RuntimeException("Namespace already exists");
         }
         NamespaceDescriptor descriptor = NamespaceDescriptor.create(namespace).build();
@@ -288,4 +292,46 @@ public class HbaseTool {
         admin.close();
         conn.close();
     }
+
+    //删除表空间
+    public void deleteNamespace(Map<String, String> conf, Map<String, String> env, String namespace) throws Exception {
+        Connection conn = getConnection(conf, env);
+        Admin admin = conn.getAdmin();
+        admin.deleteNamespace(namespace);
+        admin.close();
+        conn.close();
+    }
+
+    //删除表
+    public void deleteTable(Map<String, String> conf, Map<String, String> env, String tablename) throws Exception {
+        Connection conn = getConnection(conf, env);
+        Admin admin = conn.getAdmin();
+        admin.deleteTable(TableName.valueOf(tablename));
+        admin.close();
+        conn.close();
+    }
+
+    //启用表
+    public void enableTable(Map<String, String> conf, Map<String, String> env, String tablename) throws Exception {
+        Connection conn = getConnection(conf, env);
+        Admin admin = conn.getAdmin();
+        if (!admin.isTableEnabled(TableName.valueOf(tablename))) {
+            admin.enableTable(TableName.valueOf(tablename));
+        }
+        admin.close();
+        conn.close();
+    }
+
+    //禁用表
+    public void disableTable(Map<String, String> conf, Map<String, String> env, String tablename) throws Exception {
+        Connection conn = getConnection(conf, env);
+        Admin admin = conn.getAdmin();
+        if (admin.isTableEnabled(TableName.valueOf(tablename))) {
+            admin.disableTable(TableName.valueOf(tablename));
+        }
+        admin.close();
+        conn.close();
+    }
+
+
 }
