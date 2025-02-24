@@ -7,6 +7,17 @@ public class HbaseTableStatus implements Serializable {
     private String name;
     private String namespace;
     private Boolean enabled;
+    private long disksize;
+    private long memstoresize;
+
+    public long getMemstoresize() {
+        return memstoresize;
+    }
+
+    public HbaseTableStatus setMemstoresize(long memstoresize) {
+        this.memstoresize = memstoresize;
+        return this;
+    }
 
     public String getName() {
         return name;
@@ -14,6 +25,15 @@ public class HbaseTableStatus implements Serializable {
 
     public HbaseTableStatus setName(String name) {
         this.name = name;
+        return this;
+    }
+
+    public long getDisksize() {
+        return disksize;
+    }
+
+    public HbaseTableStatus setDisksize(long disksize) {
+        this.disksize = disksize;
         return this;
     }
 
@@ -33,5 +53,9 @@ public class HbaseTableStatus implements Serializable {
     public HbaseTableStatus setEnabled(Boolean enabled) {
         this.enabled = enabled;
         return this;
+    }
+
+    public String toString() {
+        return "HbaseTableStatus [name=" + name + ", namespace=" + namespace + ", enabled=" + enabled + ", disksize=" + disksize + ", memstoresize=" + memstoresize + "]";
     }
 }

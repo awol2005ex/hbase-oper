@@ -1,6 +1,7 @@
 package com.awol2005ex.hbase;
 
 import com.awol2005ex.hbase.entity.HbaseTableStatus;
+import com.awol2005ex.hbase.entity.NamespaceStatus;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.apache.hadoop.conf.Configuration;
@@ -14,6 +15,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.security.UserGroupInformation;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -80,12 +82,47 @@ public class HbaseTool {
         return ConnectionFactory.createConnection(hbaseConf);
     }
 
-    public List<String> getNamespaces(Map<String, String> conf, Map<String, String> env) throws Exception {
+    public List<NamespaceStatus> getNamespaces(Map<String, String> conf, Map<String, String> env) throws Exception {
 
         Connection conn = getConnection(conf, env);
         Admin admin = conn.getAdmin();
 
-        List<String> namespaces = Arrays.stream(admin.listNamespaceDescriptors()).map(NamespaceDescriptor::getName).collect(Collectors.toList());
+        List<NamespaceStatus> namespaces = Arrays.stream(admin.listNamespaceDescriptors()).map(n-> new NamespaceStatus().setName(n.getName())).collect(Collectors.toList());
+        admin.close();
+        conn.close();
+
+        return namespaces;
+    }
+
+    public List<NamespaceStatus> getNamespaceMetricsList(Map<String, String> conf, Map<String, String> env) throws Exception {
+
+        Connection conn = getConnection(conf, env);
+        Admin admin = conn.getAdmin();
+        Collection<ServerName> serviceNames = admin.getRegionServers();
+        List<NamespaceStatus> namespaces = Arrays.stream(admin.listNamespaceDescriptors()).map(n->
+        {
+            NamespaceStatus na=new NamespaceStatus().setName(n.getName());
+            long disksize =0L;
+            long memstoresize=0L;
+            try {
+                for (TableDescriptor tableName : admin.listTableDescriptorsByNamespace(n.getName().getBytes())) {
+                    for (ServerName serviceName : serviceNames) {
+                        List<RegionMetrics> m = admin.getRegionMetrics(serviceName, tableName.getTableName());
+                        for (RegionMetrics r : m) {
+                            disksize += r.getStoreFileSize().getLongValue();
+                            memstoresize += r.getMemStoreSize().getLongValue();
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            na.setMemstoresize(memstoresize);
+            na.setDisksize(disksize);
+            return na;
+        }
+
+        ).collect(Collectors.toList());
         admin.close();
         conn.close();
 
@@ -121,8 +158,36 @@ public class HbaseTool {
         Admin admin = conn.getAdmin();
 
         List<HbaseTableStatus> tables = new ArrayList<>();
-        for (HTableDescriptor tableName : admin.listTableDescriptorsByNamespace(namespace)) {
-            HbaseTableStatus hbaseTableStatus = new HbaseTableStatus().setName(tableName.getNameAsString()).setNamespace(namespace).setEnabled(admin.isTableEnabled(tableName.getTableName()));
+        for (TableDescriptor tableName : admin.listTableDescriptorsByNamespace(namespace.getBytes())) {
+            HbaseTableStatus hbaseTableStatus = new HbaseTableStatus().setName(tableName.getTableName().getNameAsString()).setNamespace(namespace).setEnabled(admin.isTableEnabled(tableName.getTableName()));
+            tables.add(hbaseTableStatus);
+        }
+        admin.close();
+        conn.close();
+
+        return tables;
+    }
+
+    public List<HbaseTableStatus> getTableMetricsList(Map<String, String> conf, Map<String, String> env, String namespace) throws Exception {
+
+        Connection conn = getConnection(conf, env);
+        Admin admin = conn.getAdmin();
+        Collection<ServerName> serviceNames = admin.getRegionServers();
+
+        List<HbaseTableStatus> tables = new ArrayList<>();
+        for (TableDescriptor tableName : admin.listTableDescriptorsByNamespace(namespace.getBytes())) {
+            HbaseTableStatus hbaseTableStatus = new HbaseTableStatus().setName(tableName.getTableName().getNameAsString()).setNamespace(namespace).setEnabled(admin.isTableEnabled(tableName.getTableName()));
+            long disksize =0L;
+            long memstoresize=0L;
+            for (ServerName serviceName : serviceNames) {
+                List<RegionMetrics> m = admin.getRegionMetrics(serviceName, tableName.getTableName());
+                for (RegionMetrics r : m) {
+                    disksize += r.getStoreFileSize().getLongValue();
+                    memstoresize += r.getMemStoreSize().getLongValue();
+                }
+            }
+            hbaseTableStatus.setDisksize(disksize).setMemstoresize(memstoresize);
+
             tables.add(hbaseTableStatus);
         }
         admin.close();
@@ -331,6 +396,30 @@ public class HbaseTool {
         }
         admin.close();
         conn.close();
+    }
+
+    public HbaseTableStatus getTableMetrics(Map<String, String> conf, Map<String, String> env, HbaseTableStatus tablestatus) throws Exception {
+        Connection conn = getConnection(conf, env);
+        Admin admin = conn.getAdmin();
+        TableName name = TableName.valueOf(tablestatus.getName());
+
+        // 获取表的所有 region
+        Collection<ServerName> serviceNames = admin.getRegionServers();
+        long disksize = 0L;
+        long memstoresize = 0L;
+
+        for (ServerName serviceName : serviceNames) {
+            List<RegionMetrics> m = admin.getRegionMetrics(serviceName, name);
+            for (RegionMetrics r : m) {
+                disksize += r.getStoreFileSize().getLongValue();
+                memstoresize += r.getMemStoreSize().getLongValue();
+            }
+        }
+        tablestatus.setDisksize(disksize).setMemstoresize(memstoresize);
+
+        admin.close();
+        conn.close();
+        return tablestatus;
     }
 
 
